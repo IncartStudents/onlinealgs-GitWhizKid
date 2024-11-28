@@ -26,11 +26,30 @@ void write_to_file(const std::string& filename, const std::vector<double>& time,
 }
 
 std::vector<double> compute_coeff(int window_size) {
-    std::vector<double> B(window_size);
+    std::vector<double> coefficients(window_size, 0.0);
+    double denominator = window_size * (window_size * window_size - 1);
+    
     for (int num = 0; num < window_size; ++num) {
-        B[num] = (12 * num - 6 * (window_size - 1)) / (window_size * (window_size * window_size - 1));
+        coefficients[num] = (12.0 * num - 6.0 * (window_size - 1)) / denominator;
     }
-    return B;
+    
+    return coefficients;
+}
+
+std::vector<double> applyFIRFilter(const std::vector<double>& X, const std::vector<double>& B) {
+    int M = B.size(); // Длина фильтра
+    int N = X.size(); // Длина входного сигнала
+    std::vector<double> Y(N + M - 1, 0.0); // Выходной сигнал
+
+    // Свертка
+    for (int n = 0; n < N + M - 1; ++n) {
+        for (int m = 0; m < M; ++m) {
+            if (n - m >= 0 && n - m < N) { // Проверка на выход за пределы
+                Y[n] += B[m] * X[n - m];
+            }
+        }
+    }
+    return Y;
 }
 
 int main() {
@@ -56,20 +75,8 @@ int main() {
     // Параметры фильтра
     const int window_size = 80;
     std::vector<double> B = compute_coeff(window_size);
-    std::vector<double> Y(N, 0); 
-
-    // Применение КИХ-фильтра
-    for (int n = 0; n < N; ++n) {
-        double sum_xn = 0;
-        int k = 0;
-        for (int i = n; i >= n - window_size + 1; --i) {
-            if (i >= 0) { 
-                sum_xn += B[k] * noisy_signal[i];
-                k++;
-            }
-        }
-        Y[n] = sum_xn;
-    }
+   // Применение КИХ-фильтра
+    std::vector<double> Y = applyFIRFilter(noisy_signal, B);
 
     // Запись данных в файл
     std::vector<double> time(N);
