@@ -1,5 +1,6 @@
 #include <iostream>
 #include <fstream>
+#include <chrono>
 
 // Функция для вычисления коэффициентов фильтра
 void compute_coeff(double* coefficients, int window_size) {
@@ -24,16 +25,14 @@ double myFunction(double t) {
 
 // Функция для применения КИХ фильтра
 double funcKIX(double X0, double* pX, double* pB, int n) {
-    // Сдвигаем прошлые значения X
     for (int i = n - 1; i > 0; i--) {
-        pX[i] = pX[i - 1]; // Двигаем прошлые X на шаг
+        pX[i] = pX[i - 1];
     }
-    pX[0] = X0; // Сохраняем текущее входное значение
+    pX[0] = X0;
 
     double Y = 0.0;
-    // Суммируем произведения коэффициентов и входных значений
     for (int i = 0; i < n; i++) {
-        Y += pB[i] * pX[i]; // Надо складывать все X начиная с X[0].
+        Y += pB[i] * pX[i];
     }
     return Y;
 }
@@ -42,7 +41,7 @@ double funcKIX(double X0, double* pX, double* pB, int n) {
 void write_to_file(const double* input, const double* output, int size, double step) {
     std::ofstream data_file("data.txt");
     if (!data_file) {
-        std::cerr << "Ошибка при открытии файла!" << std::endl;
+        std::cerr << "Error while opening file!" << std::endl;
         return;
     }
 
@@ -55,32 +54,54 @@ void write_to_file(const double* input, const double* output, int size, double s
     data_file.close();
 }
 
+// Функция для чтения данных из файла
+int read_from_file(const std::string& filename, double* input, int max_size) {
+    std::ifstream data_file(filename, std::ios::binary); // Добавлен флаг std::ios::binary
+    if (!data_file) {
+        std::cerr << "Error while opening file!" << std::endl;
+        return 0;
+    }
+
+    data_file.read(reinterpret_cast<char*>(input), max_size * sizeof(double)); // Чтение данных в бинарном формате
+    int count = data_file.gcount() / sizeof(double); // Получаем количество считанных элементов
+
+    data_file.close();
+    return count; // Возвращаем количество считанных значений
+}
+
 int main() {
-    double start_time = 0.0;
-    double end_time = 2.0;
     double step = 0.01; 
     int window_size = 21;
-    int num_points = static_cast<int>((end_time - start_time) / step) + 1;
+    int max_points = 100000000;
 
     // Выделяем память для коэффициентов, входных и выходных данных
     double* coeff = new double[window_size];
-    double* input = new double[num_points];
-    double* output = new double[num_points];
+    double* input = new double[max_points];
+    double* output = new double[max_points];
 
     compute_coeff(coeff, window_size);
 
-    // Генерация входного сигнала
-    for (int i = 0; i < num_points; ++i) {
-        double t = start_time + i * step;
-        input[i] = myFunction(t);
+    // Чтение входного сигнала из файла
+    int num_points = read_from_file("breath_oxy115829.bin", input, max_points);
+    if (num_points == 0) {
+        delete[] coeff;
+        delete[] input;
+        delete[] output;
+        return 1; // Завершаем программу, если не удалось прочитать данные
     }
 
     double* pX = new double[window_size](); // Инициализация нулями
 
-    // Применение КИХ фильтра
+    // Измерение времени выполнения алгоритма
+    auto start = std::chrono::high_resolution_clock::now();
+
     for (int i = 0; i < num_points; ++i) {
         output[i] = funcKIX(input[i], pX, coeff, window_size);
     }
+
+    auto stop = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+
 
     // Записываем данные в файл в нужном формате
     write_to_file(input, output, num_points, step);
@@ -90,8 +111,9 @@ int main() {
     delete[] input;
     delete[] output;
     delete[] pX;
-    
-    std::cout << "Данные записаны в файл data.txt." << std::endl;
+
+    std::cout << "Data written to file data.txt." << std::endl;
+    std::cout << "Algorithm execution time: " << duration.count() << "ms" << std::endl;
 
     return 0;
 }
