@@ -1,17 +1,13 @@
 #include <iostream>
-#include <vector>
 #include <fstream>
 
 // Функция для вычисления коэффициентов фильтра
-std::vector<double> compute_coeff(int window_size) {
-    std::vector<double> coefficients(window_size, 0.0);
+void compute_coeff(double* coefficients, int window_size) {
     double denominator = window_size * (window_size * window_size - 1);
     
     for (int num = 0; num < window_size; ++num) {
-        coefficients[num] = (12.0 * num - 6.0 * (window_size - 1)) / denominator;
+        coefficients[num] = -1.0 * (12.0 * num - 6.0 * (window_size - 1)) / denominator;
     }
-    
-    return coefficients;
 }
 
 double myFunction(double t) {
@@ -43,7 +39,7 @@ double funcKIX(double X0, double* pX, double* pB, int n) {
 }
 
 // Функция для записи данных в файл
-void write_to_file(const std::vector<double>& input, const std::vector<double>& output, double step) {
+void write_to_file(const double* input, const double* output, int size, double step) {
     std::ofstream data_file("data.txt");
     if (!data_file) {
         std::cerr << "Ошибка при открытии файла!" << std::endl;
@@ -51,9 +47,9 @@ void write_to_file(const std::vector<double>& input, const std::vector<double>& 
     }
 
     // Записываем данные: время, оригинальный сигнал, отфильтрованный сигнал
-    for (size_t i = 0; i < input.size(); ++i) {
+    for (int i = 0; i < size; ++i) {
         double time = i * step; // вычисляем время
-        data_file << time << "," << input[i] << "," << output[i] << std::endl;
+        data_file << time << "," << input[i] << "," << (output[i] * 100.0) << std::endl;
     }
 
     data_file.close();
@@ -63,30 +59,38 @@ int main() {
     double start_time = 0.0;
     double end_time = 2.0;
     double step = 0.01; 
-    int window_size = 5; 
+    int window_size = 21;
+    int num_points = static_cast<int>((end_time - start_time) / step) + 1;
 
-    std::vector<double> coeff = compute_coeff(window_size);
-    std::vector<double> input;
-    std::vector<double> output;
+    // Выделяем память для коэффициентов, входных и выходных данных
+    double* coeff = new double[window_size];
+    double* input = new double[num_points];
+    double* output = new double[num_points];
 
-    // Массив для хранения предыдущих входных значений
-    std::vector<double> pX(window_size, 0.0);
+    compute_coeff(coeff, window_size);
 
     // Генерация входного сигнала
-    for (double t = start_time; t <= end_time; t += step) {
-        double value = myFunction(t);
-        input.push_back(value);
+    for (int i = 0; i < num_points; ++i) {
+        double t = start_time + i * step;
+        input[i] = myFunction(t);
     }
 
+    double* pX = new double[window_size](); // Инициализация нулями
+
     // Применение КИХ фильтра
-    for (const auto& value : input) {
-        double filtered_value = funcKIX(value, pX.data(), coeff.data(), window_size);
-        output.push_back(filtered_value);
+    for (int i = 0; i < num_points; ++i) {
+        output[i] = funcKIX(input[i], pX, coeff, window_size);
     }
 
     // Записываем данные в файл в нужном формате
-    write_to_file(input, output, step);
+    write_to_file(input, output, num_points, step);
 
+    // Освобождаем выделенную память
+    delete[] coeff;
+    delete[] input;
+    delete[] output;
+    delete[] pX;
+    
     std::cout << "Данные записаны в файл data.txt." << std::endl;
 
     return 0;
