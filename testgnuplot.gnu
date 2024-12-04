@@ -1,5 +1,5 @@
 set terminal png
-set output "D:/Microsoft VS Code Projects/onlinealgs-GitWhizKid/testimage.png"
+set output "D:/Microsoft VS Code Projects/onlinealgs-GitWhizKid/testimage2.png"
 
 set title "Сигнал и его фильтрация"
 set xlabel "Время (с)"

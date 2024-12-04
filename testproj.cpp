@@ -82,7 +82,7 @@ int main() {
     compute_coeff(coeff, window_size);
 
     // Чтение входного сигнала из файла
-    int num_points = read_from_file("breath_oxy115829.bin", input, max_points);
+    int num_points = read_from_file("D:/Microsoft VS Code Projects/onlinealgs-GitWhizKid/breath_oxy115829.bin", input, max_points);
     if (num_points == 0) {
         delete[] coeff;
         delete[] input;

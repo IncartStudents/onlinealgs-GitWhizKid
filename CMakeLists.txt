@@ -5,5 +5,5 @@ project(KIHFilt)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
-add_executable(KIHFilt testproj.cpp)
+add_executable(KIHFilt filtration.cpp)
 
