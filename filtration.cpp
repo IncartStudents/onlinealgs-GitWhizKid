@@ -12,6 +12,8 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+std::streampos current_position = 0;
+
 enum class Mode {
     SINE_NOISE,
     STEP_SIGNAL,
@@ -108,6 +110,7 @@ int read_from_file(const std::string& filename, CircularBuffer& input, int buffe
         return 0;
     }
 
+    data_file.seekg(current_position);
     std::vector<double> temp(buffer_size);
     data_file.read(reinterpret_cast<char*>(temp.data()), buffer_size * sizeof(double));
     int read_count = data_file.gcount() / sizeof(double);
@@ -116,6 +119,7 @@ int read_from_file(const std::string& filename, CircularBuffer& input, int buffe
         input.add(temp[i]);
     }
 
+    current_position = data_file.tellg();
     data_file.close();
     return read_count;
 }
@@ -123,6 +127,7 @@ int read_from_file(const std::string& filename, CircularBuffer& input, int buffe
 void save_state(const CircularBuffer& input, const CircularBuffer& output, int processed_count, const std::string& filename) {
     nlohmann::json j;
     j["processed_count "] = processed_count;
+    j["current_position"] = static_cast<long long>(current_position);
     j["input"] = std::vector<double>(input.get_count());
     j["output"] = std::vector<double>(output.get_count());
 
@@ -155,7 +160,7 @@ void load_state(CircularBuffer& input, CircularBuffer& output, int& processed_co
         for (const auto& value : j["output"]) {
             output.add(value);
         }
-
+        current_position = static_cast<std::streampos>(j["current_position"].get<long long>());
         file.close();
     } else {
         std::cerr << "Error while opening state file!" << std::endl;
