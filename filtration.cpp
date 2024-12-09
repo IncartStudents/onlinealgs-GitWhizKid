@@ -6,6 +6,7 @@
 #include <thread>
 #include <random>
 #include <limits>
+#include <nlohmann/json.hpp>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -107,40 +108,72 @@ int read_from_file(const std::string& filename, CircularBuffer& input, int buffe
         return 0;
     }
 
-    int total_read = 0;
-    while (true) {
-        std::vector<double> temp(buffer_size);
-        data_file.read(reinterpret_cast<char*>(temp.data()), buffer_size * sizeof(double));
-        int read_count = data_file.gcount() / sizeof(double);
-        
-        if (read_count == 0) {
-            break; // Конец файла
-        }
-
-        for (int i = 0; i < read_count; ++i) {
-            input.add(temp[i]);
-        }
-        total_read += read_count;
+    std::vector<double> temp(buffer_size);
+    data_file.read(reinterpret_cast<char*>(temp.data()), buffer_size * sizeof(double));
+    int read_count = data_file.gcount() / sizeof(double);
+    
+    for (int i = 0; i < read_count; ++i) {
+        input.add(temp[i]);
     }
 
     data_file.close();
-    return total_read;
+    return read_count;
 }
 
-void process_data(Mode mode, int window_size, int buffer_size, double step) {
+void save_state(const CircularBuffer& input, const CircularBuffer& output, int processed_count, const std::string& filename) {
+    nlohmann::json j;
+    j["processed_count "] = processed_count;
+    j["input"] = std::vector<double>(input.get_count());
+    j["output"] = std::vector<double>(output.get_count());
+
+    for (size_t i = 0; i < input.get_count(); ++i) {
+        j["input"][i] = input.get(i);
+    }
+    for (size_t i = 0; i < output.get_count(); ++i) {
+        j["output"][i] = output.get(i);
+    }
+
+    std::ofstream file(filename);
+    if (file.is_open()) {
+        file << j.dump(4); // Сохранение в формате JSON с отступами
+        file.close();
+    } else {
+        std::cerr << "Error while opening state file!" << std::endl;
+    }
+}
+
+void load_state(CircularBuffer& input, CircularBuffer& output, int& processed_count, const std::string& filename) {
+    nlohmann::json j;
+    std::ifstream file(filename);
+    if (file.is_open()) {
+        file >> j;
+        processed_count = j["processed_count"];
+
+        for (const auto& value : j["input"]) {
+            input.add(value);
+        }
+        for (const auto& value : j["output"]) {
+            output.add(value);
+        }
+
+        file.close();
+    } else {
+        std::cerr << "Error while opening state file!" << std::endl;
+    }
+}
+
+int process_data(Mode mode, int window_size, int buffer_size, CircularBuffer& input, CircularBuffer& output, double step, const std::string& path, bool& running) {
+    
     std::vector<double> coeff(window_size);
     compute_coeff(coeff, window_size);
-
-    CircularBuffer input(buffer_size);
-    CircularBuffer output(buffer_size);
     std::vector<double> pX(window_size, 0.0);
 
-    auto start = std::chrono::high_resolution_clock::now();
-
     if (mode == Mode::BINARY_FILE) {
-        read_from_file("D:/Microsoft VS Code Projects/onlinealgs-GitWhizKid/breath_oxy115829.bin", input, buffer_size);
-    } else {
-        for (int i = 0; i < buffer_size; ++i) {
+        int read_count = read_from_file(path, input, buffer_size);
+        if (read_count == 0) return 0;
+    }
+    else {
+        for (int i = 0; i < buffer_size && running; ++i) {
             double t = i * step;
             double value = (mode == Mode::SINE_NOISE) ? generateSineNoise(t) : myFunction(t);
             input.add(value);
@@ -148,22 +181,14 @@ void process_data(Mode mode, int window_size, int buffer_size, double step) {
     }
 
     // Применение функции funcKIX к входным данным
-    for (int i = 0; i < input.get_count(); ++i) {
+    for (int i = 0; i < input.get_count() && running; ++i) {
         double processed_value = funcKIX(input.get(i), pX, coeff, window_size);
         output.add(processed_value);
     }
 
-    write_to_file(input, output, input.get_count(), step);
+    write_to_file(input, output, output.get_count(), step);
 
-    auto stop = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
-    std::ofstream log_file("log.txt", std::ios::app);
-    if (log_file) {
-        log_file << "Processing completed in: " << duration.count() << "μs" << std::endl;
-        log_file.close();
-    } else {
-        std::cerr << "Error while opening log file!" << std::endl;
-    }
+    return output.get_count();
 }
 
 int main() {
@@ -171,7 +196,38 @@ int main() {
     int buffer_size = 10000;
     double step = 0.01;
     Mode mode = Mode::BINARY_FILE;
+    bool running = true;
 
-    process_data(mode, window_size, buffer_size, step);
+    CircularBuffer input(buffer_size);
+    CircularBuffer output(buffer_size);
+    int processed_count = 0;
+
+    std::string path = "D:/Microsoft VS Code Projects/onlinealgs-GitWhizKid/breath_oxy115829.bin"; // Путь к бинарному файлу
+    std::string state_file = "state.json"; // Файл для сохранения состояния
+
+    load_state(input, output, processed_count, state_file);
+
+    auto total_start = std::chrono::high_resolution_clock::now();
+
+    while (running){
+        processed_count = process_data(mode, window_size, buffer_size, input, output, step, path, running);
+        if (processed_count == 0) {
+            running = false;
+            break;
+        }
+        save_state(input, output, processed_count, state_file);
+    }
+    
+    auto total_stop = std::chrono::high_resolution_clock::now();
+    auto total_duration = std::chrono::duration_cast<std::chrono::microseconds>(total_stop - total_start).count();
+   
+    std::ofstream log_file("log.txt", std::ios::app);
+    if (log_file) {
+        log_file << "Total processing time: " << total_duration << "μs" << std::endl;
+        log_file.close();
+    } else {
+        std::cerr << "Error while opening log file!" << std::endl;
+    }
+    
     return 0;
 }
